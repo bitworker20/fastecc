@@ -1,0 +1,3 @@
+[submodule "FourQlib"]
+	path = FourQlib
+	url = https://github.com/bitworker20/FourQlib.git
