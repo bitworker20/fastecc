@@ -25,28 +25,29 @@ ECCRYPTO_STATUS SchnorrQ_KeyGeneration(const unsigned char* SecretKey, unsigned 
   // s is the output of hashing SecretKey and taking the least significant 32 bytes of the result.
   // Input:  32-byte SecretKey
   // Output: 32-byte PublicKey
-    point_t P;
-    unsigned char k[64];
-    ECCRYPTO_STATUS Status = ECCRYPTO_ERROR_UNKNOWN;
+	point_t P;
+	unsigned char k[64];
+	ECCRYPTO_STATUS Status = ECCRYPTO_ERROR_UNKNOWN;
   
-    /* XXX We directly use secret key to generate k
-    if (CryptoHashFunction(SecretKey, 32, k) != 0) {   
-        Status = ECCRYPTO_ERROR;
-        goto cleanup;
-    }
-    */
-    memcpy(k, SecretKey, 32);
-    
-    ecc_mul_fixed((digit_t*)k, P);          // Compute public key                                       
+	/* XXX We directly use secret key to generate k
+	if (CryptoHashFunction(SecretKey, 32, k) != 0) {   
+		Status = ECCRYPTO_ERROR;
+		goto cleanup;
+	}
+	*/
+    memset(k, 0x00, 64);
+	memcpy(k, SecretKey, 32);
+	
+	ecc_mul_fixed((digit_t*)k, P);          // Compute public key                                       
 	encode(P, PublicKey);                   // Encode public key
 
-    return ECCRYPTO_SUCCESS;
+	return ECCRYPTO_SUCCESS;
 
 cleanup:
 	clear_words((unsigned int*)k, 512/(sizeof(unsigned int)*8));
-    clear_words((unsigned int*)PublicKey, 256/(sizeof(unsigned int)*8));
+	clear_words((unsigned int*)PublicKey, 256/(sizeof(unsigned int)*8));
 
-    return Status;
+	return Status;
 }
 
 
@@ -55,25 +56,25 @@ ECCRYPTO_STATUS SchnorrQ_FullKeyGeneration(unsigned char* SecretKey, unsigned ch
   // It produces a private key SecretKey and computes the public key PublicKey, which is the encoding of P = s*G, 
   // where G is the generator and s is the output of hashing SecretKey and taking the least significant 32 bytes of the result.
   // Outputs: 32-byte SecretKey and 32-byte PublicKey
-    ECCRYPTO_STATUS Status = ECCRYPTO_ERROR_UNKNOWN;
+	ECCRYPTO_STATUS Status = ECCRYPTO_ERROR_UNKNOWN;
 
 	Status = RandomBytesFunction(SecretKey, 32);
-    if (Status != ECCRYPTO_SUCCESS) {
-        goto cleanup;
-    }
+	if (Status != ECCRYPTO_SUCCESS) {
+		goto cleanup;
+	}
   
-    Status = SchnorrQ_KeyGeneration(SecretKey, PublicKey);   
-    if (Status != ECCRYPTO_SUCCESS) {
-        goto cleanup;
-    }
+	Status = SchnorrQ_KeyGeneration(SecretKey, PublicKey);   
+	if (Status != ECCRYPTO_SUCCESS) {
+		goto cleanup;
+	}
 
-    return ECCRYPTO_SUCCESS;
+	return ECCRYPTO_SUCCESS;
 
 cleanup:
-    clear_words((unsigned int*)SecretKey, 256/(sizeof(unsigned int)*8));
-    clear_words((unsigned int*)PublicKey, 256/(sizeof(unsigned int)*8));
+	clear_words((unsigned int*)SecretKey, 256/(sizeof(unsigned int)*8));
+	clear_words((unsigned int*)PublicKey, 256/(sizeof(unsigned int)*8));
 
-    return Status;
+	return Status;
 }
 
 
@@ -82,59 +83,62 @@ ECCRYPTO_STATUS SchnorrQ_Sign(const unsigned char* SecretKey, const unsigned cha
   // It produces the signature Signature of a message Message of size SizeMessage in bytes
   // Inputs: 32-byte SecretKey, 32-byte PublicKey, and Message of size SizeMessage in bytes
   // Output: 64-byte Signature 
-    point_t R;
-    unsigned char k[64], r[64], h[64], *temp = NULL;
+	point_t R;
+	unsigned char k[64], r[64], h[64], *temp = NULL;
 	digit_t* H = (digit_t*)h;
-    digit_t* S = (digit_t*)(Signature+32);
-    ECCRYPTO_STATUS Status = ECCRYPTO_ERROR_UNKNOWN;
+	digit_t* S = (digit_t*)(Signature+32);
+	ECCRYPTO_STATUS Status = ECCRYPTO_ERROR_UNKNOWN;
 
-    /* XXX WE Directly use secret key to generate k
-    if (CryptoHashFunction(SecretKey, 32, k) != 0) {   
-        Status = ECCRYPTO_ERROR;
-        goto cleanup;
-    }
-    */
-    memcpy(k, SecretKey, 32);
-    
-    temp = (unsigned char*)calloc(1, SizeMessage+64);
-    if (temp == NULL) {
+	/* XXX WE Directly use secret key to generate k
+	if (CryptoHashFunction(SecretKey, 32, k) != 0) {   
+		Status = ECCRYPTO_ERROR;
+		goto cleanup;
+	}
+	*/
+	memset(k, 0x00, 64);
+	memcpy(k, SecretKey, 32);
+	memset(r, 0x00, 64);
+	memset(h, 0x00, 64);
+	
+	temp = (unsigned char*)calloc(1, SizeMessage+64);
+	if (temp == NULL) {
 		Status = ECCRYPTO_ERROR_NO_MEMORY;
-        goto cleanup;
-    }
-    
-    memmove(temp+32, k+32, 32);
-    memmove(temp+64, Message, SizeMessage);
+		goto cleanup;
+	}
+	
+	memmove(temp+32, k+32, 32);
+	memmove(temp+64, Message, SizeMessage);
   
-    if (CryptoHashFunction(temp+32, SizeMessage+32, r) != 0) {   
-        Status = ECCRYPTO_ERROR;
-        goto cleanup;
-    }
-    
-    ecc_mul_fixed((digit_t*)r, R); 
-    encode(R, Signature);                   // Encode lowest 32 bytes of signature
-    memmove(temp, Signature, 32);
-    memmove(temp+32, PublicKey, 32);
+	if (CryptoHashFunction(temp+32, SizeMessage+32, r) != 0) {   
+		Status = ECCRYPTO_ERROR;
+		goto cleanup;
+	}
+	
+	ecc_mul_fixed((digit_t*)r, R); 
+	encode(R, Signature);                   // Encode lowest 32 bytes of signature
+	memmove(temp, Signature, 32);
+	memmove(temp+32, PublicKey, 32);
   
-    if (CryptoHashFunction(temp, SizeMessage+64, h) != 0) {   
-        Status = ECCRYPTO_ERROR;
-        goto cleanup;
-    }	
-    modulo_order((digit_t*)r, (digit_t*)r);
-    modulo_order(H, H);
+	if (CryptoHashFunction(temp, SizeMessage+64, h) != 0) {   
+		Status = ECCRYPTO_ERROR;
+		goto cleanup;
+	}	
+	modulo_order((digit_t*)r, (digit_t*)r);
+	modulo_order(H, H);
 	to_Montgomery((digit_t*)k, S);          // Converting to Montgomery representation
 	to_Montgomery(H, H);                    // Converting to Montgomery representation
 	Montgomery_multiply_mod_order(S, H, S);
 	from_Montgomery(S, S);                  // Converting back to standard representation
 	subtract_mod_order((digit_t*)r, S, S);
 	Status = ECCRYPTO_SUCCESS;
-    
+	
 cleanup:
 	if (temp != NULL)
 		free(temp);
-    clear_words((unsigned int*)k, 512/(sizeof(unsigned int)*8));
+	clear_words((unsigned int*)k, 512/(sizeof(unsigned int)*8));
 	clear_words((unsigned int*)r, 512/(sizeof(unsigned int)*8));
-    
-    return Status;
+	
+	return Status;
 }
 
 
@@ -143,12 +147,12 @@ ECCRYPTO_STATUS SchnorrQ_Verify(const unsigned char* PublicKey, const unsigned c
   // It verifies the signature Signature of a message Message of size SizeMessage in bytes
   // Inputs: 32-byte PublicKey, 64-byte Signature, and Message of size SizeMessage in bytes
   // Output: true (valid signature) or false (invalid signature)
-    point_t A;
-    unsigned char *temp, h[64];
-    unsigned int i;
-    ECCRYPTO_STATUS Status = ECCRYPTO_ERROR_UNKNOWN;  
+	point_t A;
+	unsigned char *temp, h[64];
+	unsigned int i;
+	ECCRYPTO_STATUS Status = ECCRYPTO_ERROR_UNKNOWN;  
 
-    *valid = false;
+	*valid = false;
 
 	temp = (unsigned char*)calloc(1, SizeMessage+64);
 	if (temp == NULL) {
@@ -156,42 +160,42 @@ ECCRYPTO_STATUS SchnorrQ_Verify(const unsigned char* PublicKey, const unsigned c
 		goto cleanup;
 	}
 
-    if (((PublicKey[15] & 0x80) != 0) || ((Signature[15] & 0x80) != 0) || (Signature[63] != 0) || ((Signature[62] & 0xC0) != 0)) {  // Are bit128(PublicKey) = bit128(Signature) = 0 and Signature+32 < 2^246?
+	if (((PublicKey[15] & 0x80) != 0) || ((Signature[15] & 0x80) != 0) || (Signature[63] != 0) || ((Signature[62] & 0xC0) != 0)) {  // Are bit128(PublicKey) = bit128(Signature) = 0 and Signature+32 < 2^246?
 		Status = ECCRYPTO_ERROR_INVALID_PARAMETER;
 		goto cleanup;
-    }
-    
+	}
+	
 	Status = decode(PublicKey, A);    // Also verifies that A is on the curve. If it is not, it fails  
-    if (Status != ECCRYPTO_SUCCESS) {
-        goto cleanup;                            
-    }
+	if (Status != ECCRYPTO_SUCCESS) {
+		goto cleanup;                            
+	}
 
-    memmove(temp, Signature, 32);
-    memmove(temp+32, PublicKey, 32);
-    memmove(temp+64, Message, SizeMessage);
+	memmove(temp, Signature, 32);
+	memmove(temp+32, PublicKey, 32);
+	memmove(temp+64, Message, SizeMessage);
   
-    if (CryptoHashFunction(temp, SizeMessage+64, h) != 0) {   
-        Status = ECCRYPTO_ERROR;
-        goto cleanup;
-    }
+	if (CryptoHashFunction(temp, SizeMessage+64, h) != 0) {   
+		Status = ECCRYPTO_ERROR;
+		goto cleanup;
+	}
 
-    Status = ecc_mul_double((digit_t*)(Signature+32), A, (digit_t*)h, A);      
-    if (Status != ECCRYPTO_SUCCESS) {                                                
-        goto cleanup;
-    }
+	Status = ecc_mul_double((digit_t*)(Signature+32), A, (digit_t*)h, A);      
+	if (Status != ECCRYPTO_SUCCESS) {                                                
+		goto cleanup;
+	}
 	
 	encode(A, (unsigned char*)A);
 
-    for (i = 0; i < NWORDS_ORDER; i++) {
-        if (((digit_t*)A)[i] != ((digit_t*)Signature)[i]) {
-            goto cleanup;   
-        }
-    }
-    *valid = true;
+	for (i = 0; i < NWORDS_ORDER; i++) {
+		if (((digit_t*)A)[i] != ((digit_t*)Signature)[i]) {
+			goto cleanup;   
+		}
+	}
+	*valid = true;
 
 cleanup:
 	if (temp != NULL)
 		free(temp);
-    
-    return Status;
+	
+	return Status;
 }

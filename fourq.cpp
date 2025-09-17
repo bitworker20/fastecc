@@ -352,7 +352,9 @@ void Point::fromString(const std::string& str) {
 	reverse_bytes(brev.data(), btmp.data());
 
 	// Decode bytes into affine point
-	decode(brev.data(), pa);
+	if (decode(brev.data(), pa) != ECCRYPTO_SUCCESS) {
+		throw std::runtime_error("Point decoding failed");
+	}
 
 	// Setup internal representation (_pe)
 	point_setup(pa, _pe); // Pass _pe (decays to pointer)
