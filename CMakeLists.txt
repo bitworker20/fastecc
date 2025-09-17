@@ -25,6 +25,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Wformat=2
         -Wconversion
         -Wnull-dereference
+        -Wno-unused-variable
     )
 elseif(MSVC)
     add_compile_options(
@@ -88,7 +89,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 	    #schnorrq_new.c
         FourQlib/sha512/sha512.c
         FourQlib/random/random.c
-        PROPERTIES COMPILE_FLAGS "-Wno-uninitialized -Wno-conversion -Wunused-variable"
+        PROPERTIES COMPILE_FLAGS "-Wno-uninitialized -Wno-conversion -Wno-unused-variable"
     )
 endif()
 

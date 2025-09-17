@@ -161,7 +161,7 @@ bool SchnorrQSign(const Scalar& secretKey, const T& msg, std::array<uint8_t, 64>
         return false;
     }
     
-    auto sret = ::SchnorrQ_Sign(skraw.data(), pkraw.data(), msg.data(), msg.size(), sig.data());
+    auto sret = ::SchnorrQ_Sign(skraw.data(), pkraw.data(), msg.data(), (unsigned int)msg.size(), sig.data());
     //auto sret = ::SchnorrQ_Sign(secretKey._b.data(), pkraw.data(), msg.data(), msg.size(), sig.data());
     return sret == ECCRYPTO_SUCCESS;
 }
@@ -171,7 +171,7 @@ bool SchnorrQVerify(const Point& pubkey, const T& msg, const std::array<uint8_t,
 {
     unsigned int valid = 0;
     auto pkraw = pubkey.getRaw();
-    auto vret = ::SchnorrQ_Verify(pkraw.data(), msg.data(), msg.size(), sig.data(), &valid);
+    auto vret = ::SchnorrQ_Verify(pkraw.data(), msg.data(), (unsigned int)msg.size(), sig.data(), &valid);
     return vret == ECCRYPTO_SUCCESS && valid;
 }
 
