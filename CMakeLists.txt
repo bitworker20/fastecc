@@ -44,7 +44,6 @@ add_library(fourq STATIC
     FourQlib/FourQ_64bit_and_portable/eccp2_no_endo.c
     FourQlib/FourQ_64bit_and_portable/crypto_util.c
     FourQlib/FourQ_64bit_and_portable/schnorrq.c
-    #schnorrq_new.c
     FourQlib/sha512/sha512.c
     FourQlib/random/random.c
 )
