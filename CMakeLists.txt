@@ -70,7 +70,8 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
     target_compile_definitions(fourq PUBLIC _ARM64_)
 endif()
 
-if(CMAKE_SYSTEM_NAME MATCHES "Linux")
+if(CMAKE_SYSTEM_NAME MATCHES "Linux|Android")
+    # Android is bionic/Linux as far as FourQ.h's OS gate is concerned.
     target_compile_definitions(fourq PUBLIC __LINUX__)
 elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin") # macOS
     # For Apple platforms, set both LINUX and ARM64 flags
