@@ -64,18 +64,24 @@ target_include_directories(fourq PUBLIC
 # target_compile_definitions(fourq PUBLIC USE_ENDO=true)
 
 # Set platform-specific compile definitions
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+# CPU first (picks AMD64/fp_x64.h vs ARM64/fp_arm64.h in FourQ.h), OS second
+# (picks the random_bytes() backend in FourQlib/random/random.c). The two are
+# independent; folding them together used to force _ARM64_ on every Apple host,
+# which defined both _AMD64_ and _ARM64_ on an Intel Mac.
+# Apple reports its 64-bit ARM as "arm64", not "aarch64".
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
     target_compile_definitions(fourq PUBLIC _AMD64_)
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
     target_compile_definitions(fourq PUBLIC _ARM64_)
+else()
+    message(FATAL_ERROR "fastecc: unsupported CPU '${CMAKE_SYSTEM_PROCESSOR}' (need x86_64 or arm64)")
 endif()
 
-if(CMAKE_SYSTEM_NAME MATCHES "Linux|Android")
-    # Android is bionic/Linux as far as FourQ.h's OS gate is concerned.
+if(CMAKE_SYSTEM_NAME MATCHES "Linux|Android|Darwin")
+    # Android is bionic/Linux, and Darwin is close enough, as far as FourQ.h's
+    # OS gate is concerned: it only selects the POSIX open("/dev/urandom")
+    # branch over the Windows BCrypt one.
     target_compile_definitions(fourq PUBLIC __LINUX__)
-elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin") # macOS
-    # For Apple platforms, set both LINUX and ARM64 flags
-    target_compile_definitions(fourq PUBLIC __LINUX__ _ARM64_)
 endif()
 
 # Suppress warnings for FourQ C sources
