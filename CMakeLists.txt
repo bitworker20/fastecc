@@ -10,6 +10,8 @@ project(fastecc
 # Option to enable/disable building tests (needed for standalone testing)
 option(BUILD_TESTING "Build the tests" ON)
 
+find_package(Threads REQUIRED)
+
 # Set C++ standard (replicating parent settings)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -58,6 +60,8 @@ target_include_directories(fourq PUBLIC
     # FourQ C headers (FourQ.h, FourQ_api.h, FourQ_internal.h etc.)
     ${CMAKE_CURRENT_SOURCE_DIR}/FourQlib/FourQ_64bit_and_portable
 )
+
+target_link_libraries(fourq PUBLIC Threads::Threads)
 
 # Add compile definitions for USE_ENDO
 # --- DISABLED --- 
@@ -108,18 +112,14 @@ endif()
 
 # === 测试配置 ===
 if(BUILD_TESTING)
-    # Add test executable
-    #add_executable(run_fourq_tests test_fourq.cpp)
-    
-    # 使用通用配置
-    #configure_target(run_fourq_tests)
+    include(CTest)
 
-    # Link against dependencies
-    #target_link_libraries(run_fourq_tests PRIVATE 
-    #    fourq
-    #    GTest::gtest_main
-    #)
+    add_executable(point_concurrency_test
+        tests/point_concurrency_test.cpp
+    )
+    target_link_libraries(point_concurrency_test PRIVATE
+        fourq
+    )
 
-    # Configure automatic test discovery
-    #gtest_discover_tests(run_fourq_tests)
+    add_test(NAME point_concurrency_test COMMAND point_concurrency_test)
 endif()

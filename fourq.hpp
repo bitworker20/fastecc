@@ -3,6 +3,7 @@
 #include <array>    // for std::array
 #include <cstdint>  // for uint8_t, uint32_t, uint64_t
 #include <iosfwd>   // for std::ostream forward declaration
+#include <mutex>    // for std::mutex
 #include <string>   // for std::string
 #include <vector>   // for std::vector
 #include <cstring>
@@ -96,12 +97,13 @@ public:
 class Point {
 private:
 	point_extproj_t _pe;
+	mutable std::mutex _mutex;
 
 public:
 	// Constructors (implementation in .cpp)
 	Point();
 	Point(const Point& that);
-	Point(Point&& that) noexcept; // Move constructor
+	Point(Point&& that);
 	Point(const std::string& str);
 	Point(const EccDataType& val);
 
@@ -116,7 +118,7 @@ public:
 
 	// Assignment Operators (implementation in .cpp)
 	Point& operator=(const Point& b);
-	Point& operator=(Point&& b) noexcept; // Move assignment
+	Point& operator=(Point&& b);
 
 	// Compound Assignment Operators (implementation in .cpp)
 	Point& operator+=(const Point& that);

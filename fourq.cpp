@@ -6,6 +6,7 @@
 #include <vector>
 #include <array>
 #include <iostream> // For std::ostream
+#include <mutex>     // For std::lock_guard, std::scoped_lock
 
 // Bring in FourQ C headers (needed for types and function declarations)
 // extern "C" block might still be useful if headers lack it
@@ -282,14 +283,13 @@ Point::Point() {
 
 
 Point::Point(const Point& that) {
-	// Copy the array content
+	const std::lock_guard lock(that._mutex);
 	memcpy(_pe, that._pe, sizeof(point_extproj_t));
 }
 
-Point::Point(Point&& that) noexcept { // Add noexcept
-	// "Move" for a fixed-size array member is just a copy.
+Point::Point(Point&& that) {
+	const std::lock_guard lock(that._mutex);
 	memcpy(_pe, that._pe, sizeof(point_extproj_t));
-	// No need to nullify that._pe as it's not a pointer.
 }
 
 
@@ -317,12 +317,14 @@ Point::Point(const EccDataType& val) {
 // Destructor not needed for array member _pe
 
 EccDataType Point::getRaw() const {
-	// No null check needed for array member
 	EccDataType rd;
 	point_t pa;
-	// Normalize a copy to avoid modifying const object state and casting away const
-	Point p_copy = *this;
-	eccnorm(p_copy._pe, pa);
+	point_extproj_t point_copy;
+	{
+		const std::lock_guard lock(_mutex);
+		memcpy(point_copy, _pe, sizeof(point_extproj_t));
+	}
+	eccnorm(point_copy, pa);
 
 	// Encode the affine point into bytes - encode returns void
 	encode(pa, rd.data());
@@ -356,23 +358,26 @@ void Point::fromString(const std::string& str) {
 		throw std::runtime_error("Point decoding failed");
 	}
 
-	// Setup internal representation (_pe)
-	point_setup(pa, _pe); // Pass _pe (decays to pointer)
+	point_extproj_t decoded_point;
+	point_setup(pa, decoded_point);
 
-	// Validate the point
-	if (ecc_point_validate(_pe) == false) { // Pass _pe
+	if (ecc_point_validate(decoded_point) == false) {
 		throw std::runtime_error("ecc_point_validate failed: point from string not on curve or invalid");
 	}
+
+	const std::lock_guard lock(_mutex);
+	memcpy(_pe, decoded_point, sizeof(point_extproj_t));
 }
 
 
 bool Point::isZero() const {
-	// No null check needed
-
 	point_t normalized_point;
-	// Use a copy since eccnorm might modify the input (or needs non-const)
-	Point p_copy = *this;
-	eccnorm(p_copy._pe, normalized_point); // Pass the copy's _pe
+	point_extproj_t point_copy;
+	{
+		const std::lock_guard lock(_mutex);
+		memcpy(point_copy, _pe, sizeof(point_extproj_t));
+	}
+	eccnorm(point_copy, normalized_point);
 
 	// Get the canonical zero point (identity) in affine form (0, 1)
 	point_t normalized_canonical_zero;
@@ -392,28 +397,40 @@ bool Point::isZero() const {
 
 Point& Point::operator=(const Point& b) {
 	if (this != &b) {
-		// Copy the array content
+		const std::scoped_lock lock(_mutex, b._mutex);
 		memcpy(_pe, b._pe, sizeof(point_extproj_t));
 	}
 	return *this;
 }
 
-Point& Point::operator=(Point&& b) noexcept { // Ensure signature matches declaration
-	 if (this != &b) {
-		// "Move" is just a copy for array member
+Point& Point::operator=(Point&& b) {
+	if (this != &b) {
+		const std::scoped_lock lock(_mutex, b._mutex);
 		memcpy(_pe, b._pe, sizeof(point_extproj_t));
-	 }
-	 return *this;
+	}
+	return *this;
 }
 
 Point& Point::operator+=(const Point& that) {
-	// No null check needed
-	// Precompute for addition as required by eccadd
-	point_extproj_precomp_t pthat_precomp;
-	// R1_to_R2 needs non-const point_extproj*, use a copy of 'that' if needed
-	Point that_copy = that;
-	R1_to_R2(that_copy._pe, pthat_precomp); // Pass copy
-	eccadd(pthat_precomp, _pe); // Pass _pe
+	const auto add_locked = [&] {
+		point_extproj_t result;
+		point_extproj_t addend;
+		memcpy(result, _pe, sizeof(point_extproj_t));
+		memcpy(addend, that._pe, sizeof(point_extproj_t));
+
+		point_extproj_precomp_t pthat_precomp;
+		R1_to_R2(addend, pthat_precomp);
+		eccadd(pthat_precomp, result);
+		memcpy(_pe, result, sizeof(point_extproj_t));
+	};
+
+	if (this == &that) {
+		const std::lock_guard lock(_mutex);
+		add_locked();
+	} else {
+		const std::scoped_lock lock(_mutex, that._mutex);
+		add_locked();
+	}
 	return *this;
 }
 
@@ -424,11 +441,12 @@ Point& Point::operator-=(const Point& that) {
 }
 
 Point& Point::operator*=(const Scalar& b) {
-	// No null check needed
+	const std::lock_guard lock(_mutex);
+	point_extproj_t point_copy;
 	point_t P_affine, Q_affine;
 
-	// Normalize the current point (_pe) to affine P_affine
-	eccnorm(_pe, P_affine); // Pass _pe
+	memcpy(point_copy, _pe, sizeof(point_extproj_t));
+	eccnorm(point_copy, P_affine);
 
 	// Perform scalar multiplication: Q_affine = b * P_affine
 	// ecc_mul expects digit_t*, need to cast away const from b._b.data()
@@ -436,19 +454,22 @@ Point& Point::operator*=(const Scalar& b) {
 		throw std::runtime_error("ecc_mul failed during Point::operator*=");
 	}
 
-	// Update internal representation (_pe) from the result Q_affine
-	point_setup(Q_affine, _pe); // Pass _pe
+	point_extproj_t result;
+	point_setup(Q_affine, result);
+	memcpy(_pe, result, sizeof(point_extproj_t));
 	return *this;
 }
 
 Point Point::MulAdd(const Scalar& mG, const Scalar& mP) const {
-	 // No null check needed
 	 Point ret; // Result point
 	 point_t pthis_affine, pr_affine; // Affine representations
+	 point_extproj_t point_copy;
 
-	 // Normalize a copy of 'this' point to affine
-	 Point p_copy = *this;
-	 eccnorm(p_copy._pe, pthis_affine); // Use copy's _pe
+	 {
+		 const std::lock_guard lock(_mutex);
+		 memcpy(point_copy, _pe, sizeof(point_extproj_t));
+	 }
+	 eccnorm(point_copy, pthis_affine);
 
 	 // Perform double scalar multiplication: pr = mG*G + mP*pthis
 	 // ecc_mul_double expects digit_t*, need to cast away const
@@ -515,9 +536,6 @@ Point Point::getBase() {
 }
 
 Point Point::negate(const Point& p0) {
-	if (p0.isZero()) { // Optimization: Negation of zero is zero
-		return Point::getZero();
-	}
 	// Calculate -P as P * (order - 1)
 	Scalar minus_one;
 	subtract_mod_order(curve_order, Scalar(1)._b.data(), minus_one._b.data());

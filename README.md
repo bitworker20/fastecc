@@ -116,8 +116,50 @@ bool   eq = (R.getRaw() == E.getRaw()); // true
 
 ## 测试
 
-仓库包含 `test_fourq.cpp`（基于 GTest），但当前在 `CMakeLists.txt` 中默认注释未接线。你可自行启用：
-- 取消注释测试目标与依赖，或将其迁入你的测试工程。
+**最后更新：2026-08-16**
+
+仓库包含以下测试：
+
+- `tests/point_concurrency_test.cpp`：已接入 CTest，不依赖 GTest，用于验证共享 `Point` 的并发读写及标量乘法。
+- `test_fourq.cpp`：历史 GTest 测试，目前仍未接入默认构建。
+
+运行已接入的测试：
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+```
+
+### `Point::operator*=` 并发失败复盘
+
+**记录日期：2026-08-16**
+
+故障表现：多个线程共享同一个 `Point` 并执行 `operator*=` 时，程序可能抛出：
+
+```text
+ecc_mul failed during Point::operator*=
+```
+
+该异常来自 `ecc_mul` 的输入点校验失败。原实现将成员 `_pe` 直接传给 `eccnorm`；而 `eccnorm` 并不是只读操作，它会原地把投影坐标 `z` 替换为其逆元。在并发调用中，一个线程可能在另一个线程尚未完成规范化时读取 `_pe`，得到 `x`、`y`、`z` 不一致的中间状态。这个无效点随后无法通过 `ecc_point_validate`。
+
+稳定复现方法：
+
+1. 通过点加法构造 `z != 1` 的非仿射点，例如 `G + 2G`。
+2. 使用 barrier 让 16 个线程同时对同一个点执行 `*= Scalar(1)`。
+3. 重复执行并捕获异常，同时校验结果仍等于 `3G`。
+
+修复前该测试在第 0 轮即可触发目标异常，ThreadSanitizer 同时报告 `Point::operator*=` → `eccnorm` → `fp2inv1271` 对 `_pe->z` 的数据竞争。
+
+修复方法：
+
+- 每个 `Point` 使用独立 mutex 保护内部投影坐标。
+- `operator*=` 在锁内复制当前点，只对局部副本执行 `eccnorm` 和 `ecc_mul`；全部成功后才提交新状态。
+- `getRaw`、`isZero`、`MulAdd` 使用受锁保护的快照，复制、赋值和点加法使用无死锁的组合锁。
+- `fromString` 先在局部变量中完成解码与校验，成功后再提交，保证异常不会破坏原对象。
+- `fourq` 的 CMake 公开链接 `Threads::Threads`，确保线程依赖传播给库消费者。
+
+修复后 Debug、Release 重复测试、ThreadSanitizer 和 ASan/UBSan 均通过；`BUILD_TESTING=OFF` 的纯库构建也通过。由于 `Point` 增加了 mutex，类型布局以及 move 操作的 `noexcept` 属性发生变化，升级后必须重新编译依赖该静态库的项目。
 
 ## 告警与安全
 
@@ -142,5 +184,4 @@ bool   eq = (R.getRaw() == E.getRaw()); // true
   - 属第三方源码正常现象，可在 `CMakeLists.txt` 针对 FourQlib 源增加 `-Wno-unused-variable -Wno-unused-const-variable` 局部抑制，不建议全局关闭。
 - 消息很大时签名报错？
   - 底层签名/验签 API 的消息长度参数为 `unsigned int`。若 `msg.size()` 超过其上限，请先分段或自行处理上限检查。
-
 
